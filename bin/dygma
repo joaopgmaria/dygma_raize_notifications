@@ -96,8 +96,8 @@ def usage
       breathe   <section> <color> [seconds]  slow fade in/out (indefinite if no duration)
       alternate <color>   [count]            flash left/right halves alternately
       chase     <section> <color> [sweeps]   KITT scanner bouncing back and forth
-      matrix    <section> <color> [seconds]  Matrix digital rain down columns
-      rainbow   <section> [seconds]          rainbow wave scrolling left to right (no color needed)
+      matrix    [color] [seconds]           Matrix digital rain, default green (always all)
+      rainbow   [seconds]                  rainbow wave scrolling left to right (always all)
 
     Overlays (independent of animations):
       progress <0-100>         show progress bar on digit keys (red→orange→yellow→green)
@@ -143,12 +143,16 @@ command = ARGV.shift
 usage unless command
 
 case command
-when "flash", "solid", "breathe", "chase", "matrix"
+when "flash", "solid", "breathe", "chase"
   section, params = notify_params(command)
   print_result call(:post, "/notify/#{section}", params)
 
+when "matrix"
+  section, params = notify_params(command, section: "all", color: "green")
+  print_result call(:post, "/notify/#{section}", params)
+
 when "rainbow"
-  section, params = notify_params(command, color: "red")  # color unused by behavior
+  section, params = notify_params(command, section: "all", color: "red")  # color unused by behavior
   print_result call(:post, "/notify/#{section}", params)
 
 when "alternate"

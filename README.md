@@ -50,8 +50,8 @@ dygma solid   <section> <color> [secs]   # hold color until cancelled or timeout
 dygma breathe <section> <color> [secs]   # slow fade in/out
 dygma alternate <color> [count]          # alternate left/right halves
 dygma chase   <section> <color> [sweeps] # KITT-style scanner
-dygma matrix  <section> <color> [secs]   # Matrix digital rain
-dygma rainbow <section> [secs]           # rainbow wave scrolling left to right
+dygma matrix  [secs]                     # Matrix digital rain (always all keys)
+dygma rainbow [secs]                     # rainbow wave scrolling left to right (always all keys)
 
 dygma text  <string> [color]             # light up keys matching each character
 dygma text  clear
