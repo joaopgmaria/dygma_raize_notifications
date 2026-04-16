@@ -51,6 +51,7 @@ dygma breathe <section> <color> [secs]   # slow fade in/out
 dygma alternate <color> [count]          # alternate left/right halves
 dygma chase   <section> <color> [sweeps] # KITT-style scanner
 dygma matrix  <section> <color> [secs]   # Matrix digital rain
+dygma rainbow <section> [secs]           # rainbow wave scrolling left to right
 
 dygma text  <string> [color]             # light up keys matching each character
 dygma text  clear
@@ -89,6 +90,9 @@ A bright column sweeps left and right with a fading trail. On `all`, each step l
 
 ### `matrix` — Digital rain
 Independent raindrops fall down each keyboard column with randomised speeds and delays. The underglow is set to a solid background color while the rain runs on the keys.
+
+### `rainbow` — Rainbow wave
+The full color spectrum is spread evenly across all columns and scrolls continuously left to right. No color argument needed — colors are generated from HSV hue rotation.
 
 ## Shell hooks
 

@@ -97,6 +97,7 @@ def usage
       alternate <color>   [count]            flash left/right halves alternately
       chase     <section> <color> [sweeps]   KITT scanner bouncing back and forth
       matrix    <section> <color> [seconds]  Matrix digital rain down columns
+      rainbow   <section> [seconds]          rainbow wave scrolling left to right (no color needed)
 
     Overlays (independent of animations):
       progress <0-100>         show progress bar on digit keys (red→orange→yellow→green)
@@ -179,6 +180,16 @@ when "matrix"
   section = ARGV.shift or abort "Usage: dygma matrix <section> <color> [seconds] [--force]"
   color   = ARGV.shift or abort "Usage: dygma matrix <section> <color> [seconds] [--force]"
   params  = { color: color, style: "matrix" }
+  params[:count]        = ARGV.shift if ARGV[0]
+  params[:force]        = "true" if force
+  params[:keep_if_same] = "true" if keep_if_same
+  print_result call(:post, "/notify/#{section}", params)
+
+when "rainbow"
+  force        = ARGV.delete("--force")
+  keep_if_same = ARGV.delete("--keep-if-same")
+  section = ARGV.shift or abort "Usage: dygma rainbow <section> [seconds] [--force]"
+  params  = { color: "red", style: "rainbow" }  # color unused but required by service
   params[:count]        = ARGV.shift if ARGV[0]
   params[:force]        = "true" if force
   params[:keep_if_same] = "true" if keep_if_same

@@ -12,6 +12,9 @@ module Behaviors
   MATRIX_TRAIL = 4     # keys fading behind each raindrop head
   MATRIX_TICK  = 0.08  # seconds per frame
 
+  RAINBOW_STEP_TIME = 0.05  # seconds per frame
+  RAINBOW_HUE_SHIFT = 15     # degrees to advance the wave each frame
+
   def self.for(style)
     case style
     when "flash"     then method(:flash)
@@ -20,7 +23,8 @@ module Behaviors
     when "alternate" then method(:alternate)
     when "chase"     then method(:chase)
     when "matrix"    then method(:matrix)
-    else raise ArgumentError, "Unknown style '#{style}'. Available: flash, breathe, solid, alternate, chase, matrix"
+    when "rainbow"   then method(:rainbow)
+    else raise ArgumentError, "Unknown style '#{style}'. Available: flash, breathe, solid, alternate, chase, matrix, rainbow"
     end
   end
 
@@ -183,6 +187,38 @@ module Behaviors
     end
   end
 
+  # Rainbow wave scrolling left to right continuously.
+  # Hues are spread evenly across all columns; the whole spectrum shifts
+  # RAINBOW_HUE_SHIFT degrees per frame, wrapping seamlessly.
+  # color/r/g/b params are unused — rainbow generates its own colors.
+  # count = seconds to run; nil = infinite.
+  def self.rainbow(section, _indices, _r, _g, _b, count)
+    columns = Sections.chase_columns(section)
+    return if columns.empty?
+
+    n        = columns.length
+    deadline = count ? Time.now + count : nil
+    offset   = 0  # current hue shift in degrees (0–359)
+
+    loop do
+      break if deadline && Time.now >= deadline
+
+      t0        = Time.now
+      color_map = {}
+
+      columns.each_with_index do |col, ci|
+        hue = (ci.to_f / n - offset.to_f / 360.0) % 1.0
+        r, g, b = _hsv_to_rgb(hue, 1.0, 1.0)
+        col.each { |idx| color_map[idx] = [r, g, b] }
+      end
+
+      Keyboard.paint_frame(color_map)
+      offset = (offset + RAINBOW_HUE_SHIFT) % 360
+
+      _sleep_remaining(RAINBOW_STEP_TIME, t0)
+    end
+  end
+
   private_class_method def self._set(section, indices, r, g, b)
     section == "all" ? Keyboard.set_all(r, g, b) : Keyboard.set_leds(indices, r, g, b)
   end
@@ -192,5 +228,24 @@ module Behaviors
   private_class_method def self._sleep_remaining(target, step_start)
     remaining = target - (Time.now - step_start)
     sleep remaining if remaining > 0
+  end
+
+  # Convert HSV (h: 0.0–1.0, s: 0.0–1.0, v: 0.0–1.0) to [r, g, b] 0–255.
+  private_class_method def self._hsv_to_rgb(h, s, v)
+    h6 = h * 6.0
+    i  = h6.floor % 6
+    f  = h6 - h6.floor
+    p  = v * (1.0 - s)
+    q  = v * (1.0 - f * s)
+    t  = v * (1.0 - (1.0 - f) * s)
+    r, g, b = case i
+              when 0 then [v, t, p]
+              when 1 then [q, v, p]
+              when 2 then [p, v, t]
+              when 3 then [p, q, v]
+              when 4 then [t, p, v]
+              when 5 then [v, p, q]
+              end
+    [(r * 255).round, (g * 255).round, (b * 255).round]
   end
 end
