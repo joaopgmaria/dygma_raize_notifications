@@ -1,0 +1,124 @@
+#!/bin/zsh
+# Sets up the keyboard LED control project on a new machine.
+# Run from anywhere: ~/playground/keyboard/bin/setup
+
+set -e
+
+KEYBOARD_DIR="${0:A:h:h}"  # parent of bin/
+
+echo "==> Keyboard LED setup"
+echo "    Project: $KEYBOARD_DIR"
+echo
+
+# ── 1. Ruby dependencies ────────────────────────────────────────────────────
+echo "==> Installing gems..."
+cd "$KEYBOARD_DIR"
+bundle install
+
+# ── 2. Compile Swift lock watcher ───────────────────────────────────────────
+echo "==> Compiling lock watcher..."
+swiftc "$KEYBOARD_DIR/bin/lock-watch.swift" -o "$KEYBOARD_DIR/bin/lock-watch-bin"
+
+# ── 3. Keyboard layout ──────────────────────────────────────────────────────
+if [[ ! -f "$HOME/.keyboard/layout.json" ]]; then
+  echo "==> No layout.json found — plug in the keyboard and run:"
+  echo "    ruby $KEYBOARD_DIR/bin/map_layout.rb"
+  echo "    Then re-run this script."
+  exit 1
+else
+  echo "==> Layout found at ~/.keyboard/layout.json"
+fi
+
+# ── 4. Login Item: keyboard service auto-start ──────────────────────────────
+# The service must NOT run as a launchd agent — launchd coalesces timers to
+# ~75ms which makes animations 2× slower. Instead we register a Login Item
+# app bundle that runs in the Aqua GUI session (accurate Mach timers).
+echo "==> Installing Login Item (DygmaAutostart)..."
+APP_SRC="$KEYBOARD_DIR/bin/DygmaAutostart.app"
+APP_DST="$HOME/Applications/DygmaAutostart.app"
+
+# Copy the bundle to ~/Applications (Login Items need an absolute path)
+mkdir -p "$HOME/Applications"
+cp -R "$APP_SRC" "$APP_DST"
+chmod +x "$APP_DST/Contents/MacOS/DygmaAutostart"
+
+# Register as a Login Item (runs at next login, silently)
+osascript -e "tell application \"System Events\" to make login item at end with properties {path:\"$APP_DST\", hidden:true}" 2>/dev/null \
+  && echo "    Login Item registered — service will auto-start on next login." \
+  || echo "    Could not register Login Item automatically. Add $APP_DST manually in System Settings → General → Login Items."
+
+# ── 5. LaunchAgent: lock watcher ────────────────────────────────────────────
+cat > "$HOME/Library/LaunchAgents/com.keyboard.lock-watch.plist" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.keyboard.lock-watch</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>$KEYBOARD_DIR/bin/lock-watch-bin</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/keyboard-lock-watch.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/keyboard-lock-watch.log</string>
+</dict>
+</plist>
+EOF
+
+# ── 6. Shell configuration ───────────────────────────────────────────────────
+echo "==> Configuring shell..."
+
+_append_once() {
+  local file="$1" marker="$2" content="$3"
+  if ! grep -qF "$marker" "$file" 2>/dev/null; then
+    printf "\n%s\n" "$content" >> "$file"
+    echo "    Added to $file"
+  else
+    echo "    Already in $file — skipping"
+  fi
+}
+
+_append_once "$HOME/.zshenv" \
+  "playground/keyboard/ruby" \
+  'export RUBYLIB="$HOME/playground/keyboard/ruby:$RUBYLIB"'
+
+_append_once "$HOME/.zshrc" \
+  "playground/keyboard/bin" \
+  'export PATH="$HOME/playground/keyboard/bin:$PATH"'
+
+_append_once "$HOME/.zshrc" \
+  "keyboard_hooks.zsh" \
+  '# Keyboard LED hooks
+source ~/playground/keyboard/shell/keyboard_hooks.zsh'
+
+_append_once "$HOME/.rspec" \
+  "keyboard_progress" \
+  "--require keyboard_progress"
+
+# ── 7. Claude Code hooks ─────────────────────────────────────────────────────
+echo
+echo "==> Claude Code hooks"
+echo "    Merge the hooks from docs/claude-hooks.json into ~/.claude/settings.json"
+echo "    Reference: $KEYBOARD_DIR/docs/claude-hooks.json"
+
+# ── 8. Load agents ───────────────────────────────────────────────────────────
+echo "==> Loading LaunchAgents..."
+launchctl load "$HOME/Library/LaunchAgents/com.keyboard.lock-watch.plist"
+
+echo
+echo "==> Done!"
+echo "    Start the service now:  dygma start"
+echo "    Check status:           dygma status"
+echo "    Auto-start on login:    registered (DygmaAutostart Login Item)"
+echo "    (reload shell first:    source ~/.zshrc)"

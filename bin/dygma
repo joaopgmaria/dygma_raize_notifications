@@ -1,0 +1,245 @@
+#!/usr/bin/env ruby
+# dygma — CLI for the keyboard LED service
+
+require "net/http"
+require "uri"
+require "json"
+require "fileutils"
+
+SERVICE_URL = "http://localhost:9292"
+
+def api(method, path, params = {})
+  uri = URI("#{SERVICE_URL}#{path}")
+  uri.query = URI.encode_www_form(params) unless params.empty?
+  req = case method
+        when :get    then Net::HTTP::Get.new(uri)
+        when :post   then Net::HTTP::Post.new(uri)
+        when :put    then Net::HTTP::Put.new(uri)
+        when :delete then Net::HTTP::Delete.new(uri)
+        end
+  Net::HTTP.start(uri.host, uri.port, open_timeout: 3, read_timeout: 10) { |http| http.request(req) }
+rescue Errno::ECONNREFUSED
+  abort "Service not running — start it with: dygma start"
+rescue Net::OpenTimeout, Net::ReadTimeout
+  abort "Service not responding (timeout) — it may be stuck. Restart with: dygma restart"
+end
+
+def call(method, path, params = {})
+  res  = api(method, path, params)
+  body = JSON.parse(res.body)
+  abort "Error #{res.code}: #{body["error"]}" if res.code.to_i >= 400
+  body
+end
+
+def print_result(data)
+  puts JSON.pretty_generate(data)
+end
+
+SERVICE_DIR = File.expand_path("~/playground/keyboard")
+PID_FILE    = File.expand_path("~/.keyboard/service.pid")
+LOG_FILE    = "/tmp/keyboard-service.log"
+
+def service_pid
+  return nil unless File.exist?(PID_FILE)
+  pid = File.read(PID_FILE).strip.to_i
+  Process.kill(0, pid) && pid
+rescue Errno::ESRCH, Errno::EPERM
+  File.delete(PID_FILE) rescue nil
+  nil
+end
+
+def start_service
+  if (pid = service_pid)
+    puts "Service already running (PID #{pid})."
+    return
+  end
+  FileUtils.mkdir_p(File.dirname(PID_FILE))
+
+  # Fork + setsid: detaches the service from the terminal session so it survives
+  # closing the terminal. setsid() creates a new POSIX session with no controlling
+  # terminal, while keeping the Mach bootstrap context inherited from the
+  # interactive session — that context is what gives accurate timer resolution
+  # compared to launchd (which coalesces timers at ~75ms for background jobs).
+  pid = fork do
+    Process.setsid
+    $stdin.reopen("/dev/null", "r")
+    $stdout.reopen(LOG_FILE, "a")
+    $stderr.reopen(LOG_FILE, "a")
+    $stdout.sync = $stderr.sync = true
+    Dir.chdir(SERVICE_DIR)
+    exec("bundle", "exec", "rackup", "config.ru")
+  end
+  Process.detach(pid)
+  File.write(PID_FILE, pid.to_s)
+  sleep 1.5
+  puts "Service started (PID #{pid})."
+end
+
+def stop_service
+  pid = service_pid
+  unless pid
+    puts "Service not running."
+    return
+  end
+  Process.kill("TERM", pid)
+  File.delete(PID_FILE) rescue nil
+  puts "Service stopped (PID #{pid})."
+end
+
+def usage
+  puts <<~USAGE
+    Usage: dygma <command> [args]
+
+      flash   <section> <color> [count] [--force]    flash N times, then restore
+      solid   <section> <color> [seconds] [--force]  hold color until cancelled or timeout
+      breathe   <section> <color> [seconds] [--force]   slow fade in/out loop (indefinite if no duration)
+      alternate <color> [count] [--force]              flash left/right halves alternately
+      chase   <section> <color> [sweeps] [--force]    KITT scanner bouncing back and forth
+      matrix  <section> <color> [seconds] [--force]  Matrix digital rain down columns
+      cancel         <id>                  cancel a running notification by id
+      cancel-section <section>             cancel whatever is active on a section
+      status [id]                          service status, or status of a notification
+      progress <0-100>                     show progress on digit keys (red→orange→yellow→green)
+      progress clear                       clear progress and restore digit keys
+      text     <string> [color]            light up keys matching each character in string
+      text     clear                       clear text and restore keys
+      clear                                cancel all notifications and restore saved scheme
+      start                                start the keyboard service
+      stop                                 stop the keyboard service
+      restart                              restart the keyboard service
+      save                                 save current keyboard state to ~/.keyboard/scheme
+      restore                              restore keyboard state from ~/.keyboard/scheme
+
+    Sections: all  top_row  underglow
+    Colors:   red green blue yellow cyan magenta white orange pink purple off
+  USAGE
+  exit 1
+end
+
+command = ARGV.shift
+usage unless command
+
+case command
+when "flash"
+  force        = ARGV.delete("--force")
+  keep_if_same = ARGV.delete("--keep-if-same")
+  section = ARGV.shift or abort "Usage: dygma flash <section> <color> [count] [--force]"
+  color   = ARGV.shift or abort "Usage: dygma flash <section> <color> [count] [--force]"
+  params  = { color: color, style: "flash" }
+  params[:count]        = ARGV.shift if ARGV[0]
+  params[:force]        = "true" if force
+  params[:keep_if_same] = "true" if keep_if_same
+  print_result call(:post, "/notify/#{section}", params)
+
+when "solid"
+  force        = ARGV.delete("--force")
+  keep_if_same = ARGV.delete("--keep-if-same")
+  section = ARGV.shift or abort "Usage: dygma solid <section> <color> [seconds] [--force]"
+  color   = ARGV.shift or abort "Usage: dygma solid <section> <color> [seconds] [--force]"
+  params  = { color: color, style: "solid" }
+  params[:count]        = ARGV.shift if ARGV[0]
+  params[:force]        = "true" if force
+  params[:keep_if_same] = "true" if keep_if_same
+  print_result call(:post, "/notify/#{section}", params)
+
+when "breathe"
+  force        = ARGV.delete("--force")
+  keep_if_same = ARGV.delete("--keep-if-same")
+  section = ARGV.shift or abort "Usage: dygma breathe <section> <color> [--force]"
+  color   = ARGV.shift or abort "Usage: dygma breathe <section> <color> [--force]"
+  params  = { color: color, style: "breathe" }
+  params[:count]        = ARGV.shift if ARGV[0]
+  params[:force]        = "true" if force
+  params[:keep_if_same] = "true" if keep_if_same
+  print_result call(:post, "/notify/#{section}", params)
+
+when "chase"
+  force        = ARGV.delete("--force")
+  keep_if_same = ARGV.delete("--keep-if-same")
+  section = ARGV.shift or abort "Usage: dygma chase <section> <color> [sweeps] [--force]"
+  color   = ARGV.shift or abort "Usage: dygma chase <section> <color> [sweeps] [--force]"
+  params  = { color: color, style: "chase" }
+  params[:count]        = ARGV.shift if ARGV[0]
+  params[:force]        = "true" if force
+  params[:keep_if_same] = "true" if keep_if_same
+  print_result call(:post, "/notify/#{section}", params)
+
+when "matrix"
+  force        = ARGV.delete("--force")
+  keep_if_same = ARGV.delete("--keep-if-same")
+  section = ARGV.shift or abort "Usage: dygma matrix <section> <color> [seconds] [--force]"
+  color   = ARGV.shift or abort "Usage: dygma matrix <section> <color> [seconds] [--force]"
+  params  = { color: color, style: "matrix" }
+  params[:count]        = ARGV.shift if ARGV[0]
+  params[:force]        = "true" if force
+  params[:keep_if_same] = "true" if keep_if_same
+  print_result call(:post, "/notify/#{section}", params)
+
+when "alternate"
+  force        = ARGV.delete("--force")
+  keep_if_same = ARGV.delete("--keep-if-same")
+  color   = ARGV.shift or abort "Usage: dygma alternate <color> [count] [--force]"
+  params  = { color: color, style: "alternate" }
+  params[:count]        = ARGV.shift if ARGV[0]
+  params[:force]        = "true" if force
+  params[:keep_if_same] = "true" if keep_if_same
+  print_result call(:post, "/notify/all", params)
+
+when "cancel"
+  id = ARGV.shift or abort "Usage: dygma cancel <id>"
+  print_result call(:delete, "/notify/#{id}")
+
+when "cancel-section"
+  section = ARGV.shift or abort "Usage: dygma cancel-section <section>"
+  print_result call(:delete, "/notify/section/#{section}")
+
+when "status"
+  if ARGV[0]
+    print_result call(:get, "/notify/#{ARGV.shift}")
+  else
+    print_result call(:get, "/status")
+  end
+
+when "progress"
+  sub = ARGV.shift or abort "Usage: dygma progress <0-100|clear>"
+  if sub == "clear"
+    print_result call(:delete, "/progress")
+  else
+    pct = sub.to_i
+    abort "Value must be 0-100" unless (0..100).include?(pct)
+    print_result call(:put, "/progress/#{pct}")
+  end
+
+when "text"
+  sub = ARGV.shift or abort "Usage: dygma text <string|clear> [color]"
+  if sub == "clear"
+    print_result call(:delete, "/text")
+  else
+    color = ARGV.shift || "white"
+    print_result call(:put, "/text", string: sub, color: color)
+  end
+
+when "start"
+  start_service
+
+when "stop"
+  stop_service
+
+when "restart"
+  stop_service
+  sleep 1
+  start_service
+
+when "clear"
+  print_result call(:post, "/clear")
+
+when "save"
+  print_result call(:post, "/scheme/save")
+
+when "restore"
+  print_result call(:post, "/scheme/restore")
+
+else
+  warn "Unknown command '#{command}'\n\n"
+  usage
+end

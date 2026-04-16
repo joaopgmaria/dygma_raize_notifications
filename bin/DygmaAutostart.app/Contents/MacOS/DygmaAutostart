@@ -1,0 +1,24 @@
+#!/bin/zsh
+# DygmaAutostart — macOS Login Item that starts the keyboard LED service.
+#
+# Runs in the Aqua GUI session context (same Mach bootstrap as a terminal),
+# which gives accurate timer resolution for animations — unlike launchd agents
+# which coalesce timers to ~75ms intervals.
+#
+# Login Items fire before the user's terminal is open, so we:
+#   1. Wait for the system to settle (Desktop visible, filesystem ready)
+#   2. Bootstrap rbenv so `bundle exec rackup` resolves correctly
+#   3. Call `dygma start` — which fork+setsids the service so it outlives us
+
+# Wait for the Desktop session to be fully up
+sleep 8
+
+# Bootstrap rbenv (same as what ~/.zshrc does in interactive shells)
+export PATH="$HOME/.rbenv/shims:$HOME/.rbenv/bin:$PATH"
+eval "$(rbenv init - zsh 2>/dev/null)" 2>/dev/null || true
+
+# Add the keyboard bin to PATH
+export PATH="$HOME/playground/keyboard/bin:$PATH"
+
+# Start the service (idempotent — exits immediately if already running)
+dygma start

@@ -1,0 +1,14 @@
+#!/bin/zsh
+# Watches for macOS screen lock/unlock and switches keyboard to matrix mode.
+
+DYGMA="/Users/jmaria/playground/keyboard/bin/dygma"
+
+while true; do
+  notifyutil -w com.apple.screenIsLocked
+  echo "[$(date)] locked — starting matrix"
+  "$DYGMA" matrix all green --force
+
+  notifyutil -w com.apple.screenIsUnlocked
+  echo "[$(date)] unlocked — clearing"
+  "$DYGMA" clear
+done

@@ -1,0 +1,62 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "terminal-notifier -title 'Claude Code' -message 'Task complete — ready for input' -sound default 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "command": "~/playground/keyboard/bin/dygma cancel-section underglow 2>/dev/null; ~/playground/keyboard/bin/dygma flash underglow green 5 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); msg=$(echo \"$input\" | jq -r '.message // \"Action required\"' 2>/dev/null || echo 'Action required'); terminal-notifier -title 'Claude Code — Action Required' -message \"$msg\" -sound default 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "command": "~/playground/keyboard/bin/dygma flash underglow orange 10 --force 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/playground/keyboard/bin/dygma breathe underglow yellow --force 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); tool=$(echo \"$input\" | jq -r '.tool_name' 2>/dev/null); if [ \"$tool\" = \"AskUserQuestion\" ]; then ~/playground/keyboard/bin/dygma flash underglow orange --force 2>/dev/null; else ~/playground/keyboard/bin/dygma breathe underglow yellow --force --keep-if-same 2>/dev/null; fi; true"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/playground/keyboard/bin/dygma breathe underglow yellow --force --keep-if-same 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}

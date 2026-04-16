@@ -1,0 +1,15 @@
+# Compiled binary (rebuilt by setup script on each machine)
+bin/lock-watch-bin
+
+# Bundler
+.bundle/
+vendor/
+
+# Ruby LSP
+.ruby-lsp/
+
+# macOS
+.DS_Store
+
+CLAUDE.md
+.claude
