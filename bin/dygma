@@ -90,28 +90,37 @@ def usage
   puts <<~USAGE
     Usage: dygma <command> [args]
 
-      flash   <section> <color> [count] [--force]    flash N times, then restore
-      solid   <section> <color> [seconds] [--force]  hold color until cancelled or timeout
-      breathe   <section> <color> [seconds] [--force]   slow fade in/out loop (indefinite if no duration)
-      alternate <color> [count] [--force]              flash left/right halves alternately
-      chase   <section> <color> [sweeps] [--force]    KITT scanner bouncing back and forth
-      matrix  <section> <color> [seconds] [--force]  Matrix digital rain down columns
-      cancel         <id>                  cancel a running notification by id
-      cancel-section <section>             cancel whatever is active on a section
-      status [id]                          service status, or status of a notification
-      progress <0-100>                     show progress on digit keys (red→orange→yellow→green)
-      progress clear                       clear progress and restore digit keys
-      text     <string> [color]            light up keys matching each character in string
-      text     clear                       clear text and restore keys
-      clear                                cancel all notifications and restore saved scheme
-      start                                start the keyboard service
-      stop                                 stop the keyboard service
-      restart                              restart the keyboard service
-      save                                 save current keyboard state to ~/.keyboard/scheme
-      restore                              restore keyboard state from ~/.keyboard/scheme
+    Animations (all accept --force to override existing notification, --keep-if-same to skip if identical):
+      flash     <section> <color> [count]    flash N times then restore (default: infinite)
+      solid     <section> <color> [seconds]  hold color until cancelled or timeout
+      breathe   <section> <color> [seconds]  slow fade in/out (indefinite if no duration)
+      alternate <color>   [count]            flash left/right halves alternately
+      chase     <section> <color> [sweeps]   KITT scanner bouncing back and forth
+      matrix    <section> <color> [seconds]  Matrix digital rain down columns
 
-    Sections: all  top_row  underglow
-    Colors:   red green blue yellow cyan magenta white orange pink purple off
+    Overlays (independent of animations):
+      progress <0-100>         show progress bar on digit keys (red→orange→yellow→green)
+      progress clear           clear progress and restore digit keys
+      text <string> [color]    light up keys matching each character
+      text clear               clear text and restore keys
+
+    Notifications:
+      cancel         <id>      cancel a running notification by id
+      cancel-section <section> cancel whatever is active on a section
+      clear                    cancel all notifications and restore saved scheme
+      status [id]              service status, or details of a notification
+
+    Service:
+      start                    start the service (survives terminal close)
+      stop                     stop the service
+      restart                  restart the service
+
+    Scheme:
+      save                     save current LED state to ~/.keyboard/scheme
+      restore                  restore LED state from ~/.keyboard/scheme
+
+    Sections: all  top_row  space_bar  underglow  left  right  underglow_left  underglow_right  neuron
+    Colors:   red  green  blue  yellow  cyan  magenta  white  orange  pink  purple  off
   USAGE
   exit 1
 end

@@ -22,14 +22,16 @@ cd ~/playground/keyboard
 # Map your keyboard layout (keyboard must be plugged in)
 ruby bin/map_layout.rb
 
-# Run setup: installs gems, compiles Swift binary,
-# installs LaunchAgents, patches .zshrc/.zshenv/.rspec
+# Run setup: installs gems, compiles Swift binary, installs lock-watch
+# LaunchAgent, installs DygmaAutostart Login Item, patches .zshrc/.zshenv/.rspec
 bin/setup
 
-# Reload shell and start the service
+# Reload shell and start the service for this session
 source ~/.zshrc
 dygma start
 ```
+
+The service auto-starts on subsequent logins via the `DygmaAutostart` Login Item. The first time, start it manually with `dygma start`.
 
 ### Claude Code hooks
 
@@ -56,7 +58,6 @@ dygma text  clear
 dygma progress <0-100>                   # progress bar on digit keys
 dygma progress clear
 
-dygma set    <section> <color>           # set color permanently (no restore)
 dygma cancel <id>                        # cancel notification by id
 dygma cancel-section <section>           # cancel active notification on a section
 dygma clear                              # cancel everything and restore saved scheme
@@ -69,9 +70,9 @@ dygma restore                            # restore LED state from ~/.keyboard/sc
 
 | Section | Keys |
 |---|---|
-| `all` | All keys (no underglow) |
+| `all` | All keys + space bar (no underglow) |
 | `top_row` | esc → backspace |
-| `space_bar` | space1–4, thumb1–4 |
+| `space_bar` | space1–4, thumb1–4 (thumb cluster) |
 | `left` / `right` | Left / right key halves |
 | `underglow` | All underglow LEDs |
 | `underglow_left` / `underglow_right` | Half underglow |
@@ -113,3 +114,16 @@ The `ruby/keyboard_progress.rb` formatter is auto-loaded by `~/.rspec` for any R
 A compiled Swift watcher (`bin/lock-watch-bin`) listens for macOS screen lock/unlock events via `NSDistributedNotificationCenter` and switches the keyboard to Matrix mode while locked.
 
 It runs as a launchd agent (`com.keyboard.lock-watch`) and starts automatically on login.
+
+## Service management
+
+The keyboard service runs as a background process started by `dygma start`. It uses `fork + setsid` to detach from the terminal session — closing the terminal does not stop it. It inherits the interactive Mach bootstrap context from the calling process, which gives accurate timer resolution for animations (launchd agents coalesce timers to ~75ms, making animations 2× slower).
+
+```
+dygma start    # start (idempotent)
+dygma stop     # stop
+dygma restart  # restart
+```
+
+Logs: `/tmp/keyboard-service.log`
+PID file: `~/.keyboard/service.pid`
