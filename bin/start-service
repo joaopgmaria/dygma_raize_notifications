@@ -1,6 +1,0 @@
-#!/bin/zsh
-# Wrapper for launchd — sets up rbenv environment before starting the service.
-export PATH="$HOME/.rbenv/shims:$HOME/.rbenv/bin:/usr/local/bin:/usr/bin:/bin"
-eval "$(rbenv init -)"
-cd "$HOME/playground/keyboard"
-exec bundle exec rackup config.ru

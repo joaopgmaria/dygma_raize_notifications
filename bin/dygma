@@ -126,84 +126,34 @@ def usage
   exit 1
 end
 
+# Build params for a /notify/:section POST, consuming flags from ARGV.
+def notify_params(style, section: nil, color: nil)
+  force        = ARGV.delete("--force")
+  keep_if_same = ARGV.delete("--keep-if-same")
+  section ||= ARGV.shift or abort "Usage: dygma #{style} <section> ..."
+  color   ||= ARGV.shift or abort "Usage: dygma #{style} <section> <color> ..."
+  params   = { color: color, style: style }
+  params[:count]        = ARGV.shift if ARGV[0]
+  params[:force]        = "true" if force
+  params[:keep_if_same] = "true" if keep_if_same
+  [section, params]
+end
+
 command = ARGV.shift
 usage unless command
 
 case command
-when "flash"
-  force        = ARGV.delete("--force")
-  keep_if_same = ARGV.delete("--keep-if-same")
-  section = ARGV.shift or abort "Usage: dygma flash <section> <color> [count] [--force]"
-  color   = ARGV.shift or abort "Usage: dygma flash <section> <color> [count] [--force]"
-  params  = { color: color, style: "flash" }
-  params[:count]        = ARGV.shift if ARGV[0]
-  params[:force]        = "true" if force
-  params[:keep_if_same] = "true" if keep_if_same
-  print_result call(:post, "/notify/#{section}", params)
-
-when "solid"
-  force        = ARGV.delete("--force")
-  keep_if_same = ARGV.delete("--keep-if-same")
-  section = ARGV.shift or abort "Usage: dygma solid <section> <color> [seconds] [--force]"
-  color   = ARGV.shift or abort "Usage: dygma solid <section> <color> [seconds] [--force]"
-  params  = { color: color, style: "solid" }
-  params[:count]        = ARGV.shift if ARGV[0]
-  params[:force]        = "true" if force
-  params[:keep_if_same] = "true" if keep_if_same
-  print_result call(:post, "/notify/#{section}", params)
-
-when "breathe"
-  force        = ARGV.delete("--force")
-  keep_if_same = ARGV.delete("--keep-if-same")
-  section = ARGV.shift or abort "Usage: dygma breathe <section> <color> [--force]"
-  color   = ARGV.shift or abort "Usage: dygma breathe <section> <color> [--force]"
-  params  = { color: color, style: "breathe" }
-  params[:count]        = ARGV.shift if ARGV[0]
-  params[:force]        = "true" if force
-  params[:keep_if_same] = "true" if keep_if_same
-  print_result call(:post, "/notify/#{section}", params)
-
-when "chase"
-  force        = ARGV.delete("--force")
-  keep_if_same = ARGV.delete("--keep-if-same")
-  section = ARGV.shift or abort "Usage: dygma chase <section> <color> [sweeps] [--force]"
-  color   = ARGV.shift or abort "Usage: dygma chase <section> <color> [sweeps] [--force]"
-  params  = { color: color, style: "chase" }
-  params[:count]        = ARGV.shift if ARGV[0]
-  params[:force]        = "true" if force
-  params[:keep_if_same] = "true" if keep_if_same
-  print_result call(:post, "/notify/#{section}", params)
-
-when "matrix"
-  force        = ARGV.delete("--force")
-  keep_if_same = ARGV.delete("--keep-if-same")
-  section = ARGV.shift or abort "Usage: dygma matrix <section> <color> [seconds] [--force]"
-  color   = ARGV.shift or abort "Usage: dygma matrix <section> <color> [seconds] [--force]"
-  params  = { color: color, style: "matrix" }
-  params[:count]        = ARGV.shift if ARGV[0]
-  params[:force]        = "true" if force
-  params[:keep_if_same] = "true" if keep_if_same
+when "flash", "solid", "breathe", "chase", "matrix"
+  section, params = notify_params(command)
   print_result call(:post, "/notify/#{section}", params)
 
 when "rainbow"
-  force        = ARGV.delete("--force")
-  keep_if_same = ARGV.delete("--keep-if-same")
-  section = ARGV.shift or abort "Usage: dygma rainbow <section> [seconds] [--force]"
-  params  = { color: "red", style: "rainbow" }  # color unused but required by service
-  params[:count]        = ARGV.shift if ARGV[0]
-  params[:force]        = "true" if force
-  params[:keep_if_same] = "true" if keep_if_same
+  section, params = notify_params(command, color: "red")  # color unused by behavior
   print_result call(:post, "/notify/#{section}", params)
 
 when "alternate"
-  force        = ARGV.delete("--force")
-  keep_if_same = ARGV.delete("--keep-if-same")
-  color   = ARGV.shift or abort "Usage: dygma alternate <color> [count] [--force]"
-  params  = { color: color, style: "alternate" }
-  params[:count]        = ARGV.shift if ARGV[0]
-  params[:force]        = "true" if force
-  params[:keep_if_same] = "true" if keep_if_same
-  print_result call(:post, "/notify/all", params)
+  section, params = notify_params(command, section: "all")
+  print_result call(:post, "/notify/#{section}", params)
 
 when "cancel"
   id = ARGV.shift or abort "Usage: dygma cancel <id>"

@@ -4,7 +4,6 @@ require_relative "colors"
 module Text
   @mutex    = Mutex.new
   @baseline = nil
-  @current  = nil  # string, nil when inactive
 
   def self.set(string, color)
     r, g, b = COLORS.fetch(color) { raise ArgumentError, "Unknown color '#{color}'. Available: #{COLORS.keys.join(", ")}" }
@@ -17,8 +16,6 @@ module Text
         Keyboard.fetch_theme
         @baseline = Keyboard.snapshot_indices(indices)
       end
-      @current = string
-
       Keyboard.set_leds(indices, r, g, b)
     end
   end
@@ -34,12 +31,7 @@ module Text
       end
 
       @baseline = nil
-      @current  = nil
     end
-  end
-
-  def self.current
-    @mutex.synchronize { @current }
   end
 
   private

@@ -19,7 +19,6 @@ end.freeze
 module Progress
   @mutex    = Mutex.new
   @baseline = nil  # { index => [r,g,b] } snapshot before first set
-  @current  = nil  # 0-100, nil when inactive
 
   def self.set(pct)
     pct = pct.clamp(0, 100)
@@ -35,19 +34,11 @@ module Progress
         Keyboard.fetch_theme
         @baseline = Keyboard.snapshot_indices(indices)
       end
-      @current = pct
-
-      lit   = (pct * 10.0 / 100).round.clamp(0, 10)
-      pairs = indices.each_with_index.map do |idx, i|
-        color = i < lit ? PROGRESS_COLORS[i] : [0, 0, 0]
-        [idx, color]
+      lit       = (pct * 10.0 / 100).round.clamp(0, 10)
+      color_map = indices.each_with_index.each_with_object({}) do |(idx, i), h|
+        h[idx] = i < lit ? PROGRESS_COLORS[i] : [0, 0, 0]
       end
-
-      # Group by color for efficient serial commands.
-      pairs.group_by { |_, color| color }.each do |color, group|
-        r, g, b = color
-        Keyboard.set_leds(group.map(&:first), r, g, b)
-      end
+      Keyboard.paint_frame(color_map)
     end
   end
 
@@ -62,12 +53,7 @@ module Progress
       end
 
       @baseline = nil
-      @current  = nil
     end
-  end
-
-  def self.current
-    @mutex.synchronize { @current }
   end
 
   private

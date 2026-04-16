@@ -4,16 +4,17 @@ LAYOUT_FILE = File.expand_path("~/.keyboard/layout.json")
 SCHEME_FILE  = File.expand_path("~/.keyboard/scheme")
 
 module Keyboard
-  @mutex  = Mutex.new
-  @port   = nil
-  @theme  = []
-  @total  = 0
-  @layout = {}
+  @mutex           = Mutex.new
+  @reconnect_mutex = Mutex.new
+  @port            = nil
+  @theme           = []
+  @total           = 0
+  @layout          = {}
+  @reconnecting    = false
 
   def self.connect
     port_path = Dir.glob("/dev/cu.usbmodem*").first
     raise "No Dygma Raise keyboard found at /dev/cu.usbmodem*" unless port_path
-
     _open_port(port_path)
     fetch_theme
   end
@@ -22,18 +23,19 @@ module Keyboard
     @layout = JSON.parse(File.read(LAYOUT_FILE))
   end
 
+  # Sends a serial command and returns the response lines.
+  # If the keyboard is disconnected, raises immediately and starts a background
+  # reconnect thread — the mutex is NOT held during the reconnect wait, so
+  # HTTP requests remain responsive while the keyboard is unplugged.
   def self.send_cmd(cmd)
     @mutex.synchronize do
-      attempt = 0
-      begin
-        _raw_send(cmd)
-      rescue Errno::ENXIO, Errno::EIO, IOError => e
-        raise e if (attempt += 1) > 1
-        warn "[keyboard] Disconnected (#{e.class}) — reconnecting..."
-        _reconnect!
-        retry
-      end
+      raise IOError, "Keyboard not connected" unless @port
+      _raw_send(cmd)
     end
+  rescue Errno::ENXIO, Errno::EIO, IOError => e
+    warn "[keyboard] Disconnected (#{e.class}) — starting background reconnect..."
+    _handle_disconnect
+    raise
   end
 
   def self.fetch_theme
@@ -67,7 +69,7 @@ module Keyboard
   def self.restore_full(snapshot)
     flat = snapshot.flatten.join(" ")
     send_cmd("led.theme #{flat}")
-    @theme = snapshot.map(&:dup)   # keep in-memory state in sync
+    @theme = snapshot.map(&:dup)
   end
 
   # Apply per-index color overrides and send a full led.theme in one serial call.
@@ -94,29 +96,72 @@ module Keyboard
   def self._open_port(path)
     @port&.close rescue nil
     system("stty -f #{path} 9600 raw -echo cs8 cread clocal 2>/dev/null")
-    @port = File.open(path, "r+b")
+    # O_NOCTTY: prevent the serial tty from becoming our controlling terminal.
+    # Without this, setsid() leaves us with no controlling terminal, so the
+    # first tty we open becomes one — and macOS sends SIGHUP to the process
+    # when the USB device is removed, which kills Puma.
+    @port = File.open(path, File::RDWR | File::NOCTTY)
+    @port.binmode
     @port.sync = true
   end
 
-  # Runs inside @mutex — must not call send_cmd (would deadlock).
-  def self._reconnect!
-    @port&.close rescue nil
-    @port = nil
-    sleep 0.5
-    port_path = Dir.glob("/dev/cu.usbmodem*").first
-    raise "Keyboard not found after disconnect — ensure it is reconnected" unless port_path
-    _open_port(port_path)
-    # Re-fetch theme inline (can't call send_cmd — already holding @mutex).
-    raw    = _raw_send("led.theme").join(" ").split.map(&:to_i)
-    @theme = raw.each_slice(3).map { |r, g, b| [r, g, b] }
-    @total = @theme.size
-    warn "[keyboard] Reconnected to #{port_path}"
+  # Close the port and start a background reconnect thread.
+  # @reconnect_mutex ensures only one reconnect runs at a time.
+  def self._handle_disconnect
+    @mutex.synchronize do
+      @port&.close rescue nil
+      @port = nil
+    end
+
+    @reconnect_mutex.synchronize do
+      return if @reconnecting
+      @reconnecting = true
+    end
+
+    Thread.new do
+      begin
+        _do_reconnect
+      ensure
+        @reconnect_mutex.synchronize { @reconnecting = false }
+      end
+    end
+  end
+
+  # Polls every second for up to 30 s. Runs outside @mutex so the service
+  # remains responsive to HTTP requests (which fail fast via the nil @port check).
+  def self._do_reconnect
+    port_path = nil
+    30.times do
+      port_path = Dir.glob("/dev/cu.usbmodem*").first
+      break if port_path
+      warn "[keyboard] Keyboard not found — waiting to reconnect..."
+      sleep 1
+    end
+
+    unless port_path
+      warn "[keyboard] Keyboard not found after 30 s — reconnect failed"
+      return
+    end
+
+    @mutex.synchronize do
+      _open_port(port_path)
+      sleep 0.3  # let the keyboard enumerate before the first command
+      raw    = _raw_send("led.theme").join(" ").split.map(&:to_i)
+      @theme = raw.each_slice(3).map { |r, g, b| [r, g, b] }
+      @total = @theme.size
+      warn "[keyboard] Reconnected to #{port_path}"
+    end
   end
 
   def self._raw_send(cmd)
     @port.write("#{cmd}\n")
     lines = []
-    while (line = @port.readline.strip) != "."
+    loop do
+      # 3-second timeout per line: if the keyboard is disconnected mid-response
+      # the read won't block forever, keeping @mutex free for other callers.
+      raise IOError, "Serial read timeout" unless IO.select([@port], nil, nil, 3)
+      line = @port.readline.strip
+      break if line == "."
       lines << line unless line.empty?
     end
     lines
