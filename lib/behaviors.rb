@@ -187,6 +187,37 @@ module Behaviors
     end
   end
 
+  # Underglow LEDs grouped by key column (matches CHASE_COLUMNS ordering, col 0 = leftmost).
+  #
+  # Left half (69–98, 30 LEDs): starts halfway up the left edge going up then clockwise.
+  #   Left edge upper → col 0:  69–71
+  #   Top edge L→R   → cols 1–5: 72–76
+  #   Right edge      → col 5:  77–86
+  #   Bottom edge R→L → cols 5–1: 87–91
+  #   Left edge lower → col 0:  92–98
+  #
+  # Right half (99–130, 32 LEDs): mirror — starts halfway up the right edge going up then counter-clockwise.
+  #   Right edge upper → col 12: 99–101
+  #   Top edge R→L    → cols 11–6: 102–107
+  #   Left edge        → col 6:  108–117
+  #   Bottom edge L→R → cols 6–11: 118–123
+  #   Right edge lower → col 12: 124–130
+  UNDERGLOW_COLUMNS = [
+    [69, 70, 71, 92, 93, 94, 95, 96, 97, 98],              # col 0  — left outer edge
+    [72, 91],                                                # col 1
+    [73, 90],                                                # col 2
+    [74, 89],                                                # col 3
+    [75, 88],                                                # col 4
+    [76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87],      # col 5  — right edge of left half
+    [107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118], # col 6  — left edge of right half
+    [106, 119],                                              # col 7
+    [105, 120],                                              # col 8
+    [104, 121],                                              # col 9
+    [103, 122],                                              # col 10
+    [102, 123],                                              # col 11
+    [99, 100, 101, 124, 125, 126, 127, 128, 129, 130],      # col 12 — right outer edge
+  ].freeze
+
   # Rainbow wave scrolling left to right continuously.
   # Hues are spread evenly across all columns; the whole spectrum shifts
   # RAINBOW_HUE_SHIFT degrees per frame, wrapping seamlessly.
@@ -209,7 +240,7 @@ module Behaviors
       columns.each_with_index do |col, ci|
         hue = (ci.to_f / n - offset.to_f / 360.0) % 1.0
         r, g, b = _hsv_to_rgb(hue, 1.0, 1.0)
-        col.each { |idx| color_map[idx] = [r, g, b] }
+        (col + (UNDERGLOW_COLUMNS[ci] || [])).each { |idx| color_map[idx] = [r, g, b] }
       end
 
       Keyboard.paint_frame(color_map)
