@@ -87,6 +87,9 @@ module Behaviors
   # count = number of complete sweeps (forward + back = 1); nil = infinite.
   def self.scan(section, _indices, r, g, b, count)
     columns = Sections.chase_columns(section)
+    if section == "all"
+      columns = columns.each_with_index.map { |col, ci| col + (UNDERGLOW_COLUMNS[ci] || []) }
+    end
     n       = columns.length
     return if n < 2
 

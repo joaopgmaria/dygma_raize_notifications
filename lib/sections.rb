@@ -58,11 +58,24 @@ module Sections
   end
 
   # Returns an ordered Array<Array<Integer>> of index groups for the scan animation.
-  # "all" → the physical columns (multiple keys per group).
-  # Other sections → each key is its own single-element group (key-by-key scan).
+  # "all"       → physical vertical key columns (multiple keys per group).
+  # "space_bar" → paired columns: [space1,thumb1], [space2,thumb2], [space3,thumb3], [space4,thumb4].
+  # Other       → each key is its own single-element group (key-by-key scan).
+  SPACE_BAR_COLUMNS = [
+    %w[space1 thumb1],
+    %w[space2 thumb2],
+    %w[space3 thumb3],
+    %w[space4 thumb4],
+  ].freeze
+
   def self.chase_columns(section)
-    if section == "all"
+    case section
+    when "all"
       CHASE_COLUMNS
+        .map { |col| col.filter_map { |k| Keyboard.layout[k] } }
+        .reject(&:empty?)
+    when "space_bar"
+      SPACE_BAR_COLUMNS
         .map { |col| col.filter_map { |k| Keyboard.layout[k] } }
         .reject(&:empty?)
     else
