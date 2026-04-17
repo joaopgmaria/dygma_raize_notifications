@@ -52,9 +52,16 @@ module Keyboard
   end
 
   def self.fetch_theme
-    raw    = send_cmd("led.theme").join(" ").split.map(&:to_i)
-    @theme = raw.each_slice(3).map { |r, g, b| [r, g, b] }
-    @total = @theme.size
+    @mutex.synchronize do
+      raise IOError, "Keyboard not connected" unless @port
+      raw    = _raw_send("led.theme").join(" ").split.map(&:to_i)
+      @theme = raw.each_slice(3).map { |r, g, b| [r, g, b] }
+      @total = @theme.size
+    end
+  rescue Errno::ENXIO, Errno::EIO, IOError => e
+    warn "[keyboard] Disconnected (#{e.class}) — starting background reconnect..."
+    _handle_disconnect
+    raise
   end
 
   def self.theme
@@ -75,24 +82,44 @@ module Keyboard
   end
 
   def self.set_all(r, g, b)
-    send_cmd("led.setAll #{r} #{g} #{b}")
-    @theme.map! { [r, g, b] }
+    @mutex.synchronize do
+      raise IOError, "Keyboard not connected" unless @port
+      _raw_send("led.setAll #{r} #{g} #{b}")
+      @theme.map! { [r, g, b] }
+    end
+  rescue Errno::ENXIO, Errno::EIO, IOError => e
+    warn "[keyboard] Disconnected (#{e.class}) — starting background reconnect..."
+    _handle_disconnect
+    raise
   end
 
   def self.restore_full(snapshot)
-    flat = snapshot.flatten.join(" ")
-    send_cmd("led.theme #{flat}")
-    @theme = snapshot.map(&:dup)
+    @mutex.synchronize do
+      raise IOError, "Keyboard not connected" unless @port
+      _raw_send("led.theme #{snapshot.flatten.join(" ")}")
+      @theme = snapshot.map(&:dup)
+    end
+  rescue Errno::ENXIO, Errno::EIO, IOError => e
+    warn "[keyboard] Disconnected (#{e.class}) — starting background reconnect..."
+    _handle_disconnect
+    raise
   end
 
   # Apply per-index color overrides and send a full led.theme in one serial call.
   # Indices not in color_map keep their current @theme value (background preserved).
+  # The entire read-modify-send-write cycle is atomic under @mutex.
   def self.paint_frame(color_map)
-    new_theme = @theme.map(&:dup)
-    color_map.each { |i, rgb| new_theme[i] = rgb }
-    flat = new_theme.flatten.join(" ")
-    send_cmd("led.theme #{flat}")
-    @theme = new_theme
+    @mutex.synchronize do
+      raise IOError, "Keyboard not connected" unless @port
+      new_theme = @theme.map(&:dup)
+      color_map.each { |i, rgb| new_theme[i] = rgb }
+      _raw_send("led.theme #{new_theme.flatten.join(" ")}")
+      @theme = new_theme
+    end
+  rescue Errno::ENXIO, Errno::EIO, IOError => e
+    warn "[keyboard] Disconnected (#{e.class}) — starting background reconnect..."
+    _handle_disconnect
+    raise
   end
 
   def self.restore_indices(snapshot)

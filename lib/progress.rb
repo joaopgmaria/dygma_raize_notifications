@@ -30,10 +30,7 @@ module Progress
       indices = _indices
       return if indices.empty?
 
-      unless @baseline
-        Keyboard.fetch_theme
-        @baseline = Keyboard.snapshot_indices(indices)
-      end
+      @baseline ||= Keyboard.snapshot_indices(indices)
       lit       = (pct * 10.0 / 100).round.clamp(0, 10)
       color_map = indices.each_with_index.each_with_object({}) do |(idx, i), h|
         h[idx] = i < lit ? PROGRESS_COLORS[i] : [0, 0, 0]

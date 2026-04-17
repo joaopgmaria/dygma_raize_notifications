@@ -50,8 +50,15 @@ module Scheme
   end
 
   # Kill the animation thread but keep @current so it can be restarted.
+  # Restores the pre-scheme LED state so notifications start from a clean canvas
+  # rather than a frozen animation frame.
   def self.suspend
-    @mutex.synchronize { _stop_thread }
+    pre = nil
+    @mutex.synchronize do
+      _stop_thread
+      pre = @pre_scheme
+    end
+    Keyboard.restore_full(pre) if pre
   end
 
   # Restart the animation. If the optional guard block returns false the

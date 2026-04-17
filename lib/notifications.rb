@@ -20,8 +20,10 @@ module Notifications
 
     indices  = Sections.indices_for(section)
     r, g, b  = COLORS[color]
-    to_kill  = nil
-    id       = nil
+    to_kill        = nil
+    id             = nil
+    notification   = nil
+    behavior       = nil
     suspend_scheme = false
 
     @mutex.synchronize do
@@ -50,7 +52,6 @@ module Notifications
 
       @active[section] = notification
       @registry[id]    = notification
-      notification.run(behavior, on_finish: method(:_finalize))
 
       # Suspend scheme after adding to @active so that any concurrent Scheme.restart
       # guard check (Notifications.idle?) sees a non-empty @active and aborts.
@@ -58,7 +59,9 @@ module Notifications
     end
 
     to_kill&.kill
+    # Suspend first: restores pre-scheme LEDs so notification starts from clean state.
     Scheme.suspend if suspend_scheme
+    notification.run(behavior, on_finish: method(:_finalize))
     id
   end
 
