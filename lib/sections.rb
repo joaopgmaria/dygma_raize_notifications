@@ -57,9 +57,9 @@ module Sections
     end
   end
 
-  # Returns an ordered Array<Array<Integer>> of index groups for the chase animation.
+  # Returns an ordered Array<Array<Integer>> of index groups for the scan animation.
   # "all" → the physical columns (multiple keys per group).
-  # Other sections → each key is its own single-element group (key-by-key chase).
+  # Other sections → each key is its own single-element group (key-by-key scan).
   def self.chase_columns(section)
     if section == "all"
       CHASE_COLUMNS

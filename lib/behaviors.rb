@@ -21,10 +21,10 @@ module Behaviors
     when "breathe"   then method(:breathe)
     when "solid"     then method(:solid)
     when "alternate" then method(:alternate)
-    when "chase"     then method(:chase)
+    when "scan"      then method(:scan)
     when "matrix"    then method(:matrix)
     when "rainbow"   then method(:rainbow)
-    else raise ArgumentError, "Unknown style '#{style}'. Available: flash, breathe, solid, alternate, chase, matrix, rainbow"
+    else raise ArgumentError, "Unknown style '#{style}'. Available: flash, breathe, solid, alternate, scan, matrix, rainbow"
     end
   end
 
@@ -83,9 +83,9 @@ module Behaviors
 
   # KITT-style scanner: a column of keys sweeps back and forth with a fading trail.
   # For "all", each column is the physical vertical strip of keys.
-  # For other sections, each key is its own column (key-by-key chase).
+  # For other sections, each key is its own column (key-by-key scan).
   # count = number of complete sweeps (forward + back = 1); nil = infinite.
-  def self.chase(section, _indices, r, g, b, count)
+  def self.scan(section, _indices, r, g, b, count)
     columns = Sections.chase_columns(section)
     n       = columns.length
     return if n < 2

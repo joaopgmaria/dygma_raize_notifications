@@ -95,7 +95,7 @@ def usage
       solid     <section> <color> [seconds]  hold color until cancelled or timeout
       breathe   <section> <color> [seconds]  slow fade in/out (indefinite if no duration)
       alternate <color>   [count]            flash left/right halves alternately
-      chase     <section> <color> [sweeps]   KITT scanner bouncing back and forth
+      scan      <section> <color> [sweeps]   KITT scanner bouncing back and forth
       matrix    [color] [seconds]           Matrix digital rain, default green (always all)
       rainbow   [seconds]                  rainbow wave scrolling left to right (always all)
 
@@ -143,7 +143,7 @@ command = ARGV.shift
 usage unless command
 
 case command
-when "flash", "solid", "breathe", "chase"
+when "flash", "solid", "breathe", "scan"
   section, params = notify_params(command)
   print_result call(:post, "/notify/#{section}", params)
 
