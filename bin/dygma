@@ -122,7 +122,7 @@ def usage
       save                     save current LED state to ~/.keyboard/scheme
       restore                  restore LED state from ~/.keyboard/scheme
 
-    Sections: all  top_row  space_bar  underglow  left  right  underglow_left  underglow_right  neuron
+    Sections: all  keys  top_row  space_bar  underglow  left  right  left_keys  right_keys  underglow_left  underglow_right  neuron
     Colors:   red  green  blue  yellow  cyan  magenta  white  orange  pink  purple  off
   USAGE
   exit 1

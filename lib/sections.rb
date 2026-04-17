@@ -30,7 +30,8 @@ UNDERGLOW_RIGHT_END   = 130
 NEURON_INDEX          = 131
 
 module Sections
-  KNOWN = %w[all top_row space_bar underglow underglow_left underglow_right neuron left right].freeze
+  KNOWN = %w[all top_row space_bar underglow underglow_left underglow_right neuron
+             left right left_keys right_keys keys].freeze
 
   def self.indices_for(name)
     case name
@@ -48,10 +49,16 @@ module Sections
       (UNDERGLOW_RIGHT_START..UNDERGLOW_RIGHT_END).to_a
     when "neuron"
       [NEURON_INDEX]
-    when "left"
+    when "left_keys"
       Keyboard.layout.values.select { |i| i <= 32 }.sort.uniq
-    when "right"
+    when "right_keys"
       Keyboard.layout.values.select { |i| i >= 33 }.sort.uniq
+    when "keys"
+      indices_for("left_keys") + indices_for("right_keys")
+    when "left"
+      indices_for("left_keys") + indices_for("underglow_left")
+    when "right"
+      indices_for("right_keys") + indices_for("underglow_right")
     else
       raise ArgumentError, "Unknown section '#{name}'. Known: #{KNOWN.join(", ")}"
     end
@@ -70,7 +77,7 @@ module Sections
 
   def self.chase_columns(section)
     case section
-    when "all"
+    when "all", "keys"
       CHASE_COLUMNS
         .map { |col| col.filter_map { |k| Keyboard.layout[k] } }
         .reject(&:empty?)

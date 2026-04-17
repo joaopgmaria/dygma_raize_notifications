@@ -66,8 +66,8 @@ module Behaviors
 
   # Alternates color between left and right halves (keys + underglow) regardless of section/indices.
   def self.alternate(_section, _indices, r, g, b, count)
-    left  = Sections.indices_for("left")  + Sections.indices_for("underglow_left")
-    right = Sections.indices_for("right") + Sections.indices_for("underglow_right")
+    left  = Sections.indices_for("left")
+    right = Sections.indices_for("right")
     i = 0
     loop do
       break if count && i >= count
