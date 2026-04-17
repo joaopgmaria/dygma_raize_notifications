@@ -55,6 +55,15 @@ def start_service
   end
   FileUtils.mkdir_p(File.dirname(PID_FILE))
 
+  # Ensure all gems are installed before forking (safe to run in the interactive
+  # session where PATH includes rbenv shims and output is visible).
+  Dir.chdir(SERVICE_DIR) do
+    unless system("bundle check --quiet 2>/dev/null")
+      puts "Installing missing gems..."
+      system("bundle install") or abort "bundle install failed — run it manually in #{SERVICE_DIR}"
+    end
+  end
+
   # Fork + setsid: detaches the service from the terminal session so it survives
   # closing the terminal. setsid() creates a new POSIX session with no controlling
   # terminal, while keeping the Mach bootstrap context inherited from the
@@ -117,6 +126,7 @@ def usage
       start                    start the service (survives terminal close)
       stop                     stop the service
       restart                  restart the service
+      logs [-f] [-t] [-n N]    show service log; -f follow, -t tail only, -n N lines (default: all)
 
     LED State:
       save                     save current LED state to ~/.keyboard/scheme
@@ -192,6 +202,24 @@ when "text"
   else
     color = ARGV.shift || "white"
     print_result call(:put, "/text", string: sub, color: color)
+  end
+
+when "logs"
+  abort "No log file at #{LOG_FILE}" unless File.exist?(LOG_FILE)
+  follow = ARGV.delete("-f")
+  tail   = ARGV.delete("-t")
+  n_idx  = ARGV.index("-n")
+  lines  = if n_idx
+    ARGV.delete_at(n_idx)       # remove "-n"
+    ARGV.delete_at(n_idx).to_i  # remove the value
+  end
+
+  if follow
+    exec("tail", "-n", (lines || 10).to_s, "-f", LOG_FILE)
+  elsif tail || lines
+    exec("tail", "-n", (lines || 50).to_s, LOG_FILE)
+  else
+    exec("cat", LOG_FILE)
   end
 
 when "start"
