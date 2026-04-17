@@ -8,6 +8,7 @@ module Keyboard
   @reconnect_mutex = Mutex.new
   @port            = nil
   @theme           = []
+  @idle_theme      = []   # snapshot of the clean/saved state; never overwritten by animations
   @total           = 0
   @layout          = {}
   @reconnecting    = false
@@ -17,6 +18,18 @@ module Keyboard
     raise "No Dygma Raise keyboard found at /dev/cu.usbmodem*" unless port_path
     _open_port(port_path)
     fetch_theme
+    @idle_theme = @theme.map(&:dup)  # clean baseline at startup
+  end
+
+  # Returns the idle (pre-animation) theme. Used by /clear to restore cleanly.
+  def self.idle_theme
+    @idle_theme.map(&:dup)
+  end
+
+  # Update the idle theme. Pass a snapshot array, or nil to capture @theme.
+  # Called by explicit save/restore commands — never by animations.
+  def self.save_idle(theme = nil)
+    @idle_theme = (theme || @theme).map(&:dup)
   end
 
   def self.load_layout

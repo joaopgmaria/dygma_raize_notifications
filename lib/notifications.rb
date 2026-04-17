@@ -4,6 +4,7 @@ require_relative "sections"
 require_relative "notification"
 require_relative "behaviors"
 require_relative "colors"
+require_relative "scheme"
 
 module Notifications
   class ConflictError < StandardError; end
@@ -21,8 +22,11 @@ module Notifications
     r, g, b  = COLORS[color]
     to_kill  = nil
     id       = nil
+    suspend_scheme = false
 
     @mutex.synchronize do
+      was_idle = @active.empty?
+
       if (existing = @active[section])
         same = existing.color == color && existing.style == style
         return existing.id if keep_if_same && same
@@ -32,10 +36,7 @@ module Notifications
         to_kill = existing
       end
 
-      # Fetch fresh theme before capturing the first baseline for this section so
-      # the restore always returns to the actual keyboard state, not a stale cache.
       unless @baseline[section]
-        Keyboard.fetch_theme
         @baseline[section] = section == "all" ? Keyboard.theme : Keyboard.snapshot_indices(indices)
       end
 
@@ -50,10 +51,20 @@ module Notifications
       @active[section] = notification
       @registry[id]    = notification
       notification.run(behavior, on_finish: method(:_finalize))
+
+      # Suspend scheme after adding to @active so that any concurrent Scheme.restart
+      # guard check (Notifications.idle?) sees a non-empty @active and aborts.
+      suspend_scheme = was_idle && Scheme.active?
     end
 
     to_kill&.kill
+    Scheme.suspend if suspend_scheme
     id
+  end
+
+  # True when no notifications are active. Used as a guard in Scheme.restart.
+  def self.idle?
+    @mutex.synchronize { @active.empty? }
   end
 
   def self.cancel(id)
@@ -107,18 +118,32 @@ module Notifications
   private
 
   def self._finalize(notification)
+    restart_scheme = false
+
     @mutex.synchronize do
       notification.complete!
       section = notification.section
-      active  = @active[section]
-      # Only restore + clear baseline when section is truly going idle.
-      # If a newer notification has claimed the section, leave it — it will
-      # do the final restore when it finishes.
-      unless active && active.id != notification.id
-        notification.restore
+
+      # A newer notification has claimed this section — leave it alone.
+      already_superseded = @active[section] && @active[section].id != notification.id
+
+      # Remove from @active now (no-op if cancel() already did it).
+      @active.delete(section) if @active[section]&.id == notification.id
+
+      unless already_superseded
+        # If all notifications are gone and a scheme is configured, let the scheme
+        # restart instead of restoring a static snapshot.
+        if @active.empty? && Scheme.active?
+          notification.skip_restore!
+          restart_scheme = true
+        else
+          notification.restore
+        end
         @baseline.delete(section)
       end
-      @active.delete(section) if @active[section]&.id == notification.id
     end
+
+    # Restart outside the mutex. The guard aborts if a new notification sneaked in.
+    Thread.new { Scheme.restart { Notifications.idle? } } if restart_scheme
   end
 end

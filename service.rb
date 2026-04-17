@@ -3,6 +3,7 @@ require "fileutils"
 require_relative "lib/keyboard"
 require_relative "lib/sections"
 require_relative "lib/notifications"
+require_relative "lib/scheme"
 require_relative "lib/progress"
 require_relative "lib/text"
 
@@ -54,6 +55,22 @@ class KeyboardService < Sinatra::Base
     entry.merge(id: params[:id]).to_json
   end
 
+  # POST /scheme?style=rainbow&color=red  — set the background scheme animation
+  post "/scheme" do
+    style = params[:style] or halt 400, { error: "style param required" }.to_json
+    color = params[:color] || "off"
+    Scheme.set(style, color)
+    { style: style, color: color }.to_json
+  rescue ArgumentError => e
+    halt 400, { error: e.message }.to_json
+  end
+
+  # DELETE /scheme  — stop and clear the background scheme
+  delete "/scheme" do
+    Scheme.clear
+    { status: "cleared" }.to_json
+  end
+
   # POST /restore
   post "/restore" do
     Keyboard.restore_full(Keyboard.theme)
@@ -63,7 +80,8 @@ class KeyboardService < Sinatra::Base
   # POST /scheme/save
   post "/scheme/save" do
     Keyboard.fetch_theme
-    flat = Keyboard.theme.flatten.join(" ")
+    Keyboard.save_idle          # update in-memory idle theme
+    flat = Keyboard.idle_theme.flatten.join(" ")
     FileUtils.mkdir_p(File.dirname(SCHEME_FILE))
     File.write(SCHEME_FILE, flat)
     { status: "ok", leds: Keyboard.total_leds }.to_json
@@ -75,6 +93,7 @@ class KeyboardService < Sinatra::Base
     raw   = File.read(SCHEME_FILE).split.map(&:to_i)
     theme = raw.each_slice(3).map { |r, g, b| [r, g, b] }
     Keyboard.restore_full(theme)
+    Keyboard.save_idle(theme)   # update in-memory idle theme to match
     { status: "ok", leds: theme.size }.to_json
   end
 
@@ -108,18 +127,14 @@ class KeyboardService < Sinatra::Base
     { status: "cleared" }.to_json
   end
 
-  # POST /clear — cancel all notifications and restore saved scheme
+  # POST /clear — cancel all notifications, clear scheme, and restore idle theme
   post "/clear" do
     Notifications.cancel_all
+    scheme_restored = Scheme.clear   # restores pre-animation state if scheme was active
     Progress.clear
     Text.clear
-    if File.exist?(SCHEME_FILE)
-      raw   = File.read(SCHEME_FILE).split.map(&:to_i)
-      theme = raw.each_slice(3).map { |r, g, b| [r, g, b] }
-      Keyboard.restore_full(theme)
-    else
-      Keyboard.fetch_theme
-    end
+    # Restore from in-memory idle theme (never contaminated by animations)
+    Keyboard.restore_full(Keyboard.idle_theme) unless scheme_restored
     { status: "ok" }.to_json
   end
 
@@ -129,6 +144,7 @@ class KeyboardService < Sinatra::Base
       keyboard_connected: true,
       total_leds:         Keyboard.total_leds,
       layout_keys:        Keyboard.layout.keys.size,
+      active_scheme:      Scheme.current,
       active_sections:    Notifications.active,
     }.to_json
   end
