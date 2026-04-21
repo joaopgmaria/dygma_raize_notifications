@@ -12,9 +12,12 @@ class KeyboardProgressFormatter
     @completed = 0
     @failed    = false
     @last_pct  = -1
+    @threads   = []
   end
 
   def start(notification)
+    # WebMock is configured in before(:suite) hooks; patching here runs after those.
+    WebMock.disable_net_connect!(allow_localhost: true) if defined?(WebMock)
     @total = notification.count
     api(:post, "/notify/underglow?color=yellow&style=breathe&force=true")
     api(:put,  "/progress/0")
@@ -34,6 +37,11 @@ class KeyboardProgressFormatter
   end
 
   def dump_summary(notification)
+    # Wait for all in-flight progress updates before clearing — async threads
+    # won't otherwise execute before the process exits (single-threaded Puma
+    # holds Keyboard.@mutex for serial I/O, starving the threads).
+    @threads.each(&:join)
+    @threads.clear
     api(:delete, "/progress")
     failed = @failed ||
              notification.failure_count > 0 ||
@@ -68,7 +76,9 @@ class KeyboardProgressFormatter
   end
 
   def async(&block)
-    Thread.new(&block)
+    t = Thread.new(&block)
+    @threads << t
+    t
   end
 end
 
