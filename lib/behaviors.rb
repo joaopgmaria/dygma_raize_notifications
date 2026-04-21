@@ -15,6 +15,38 @@ module Behaviors
   RAINBOW_STEP_TIME = 0.05  # seconds per frame
   RAINBOW_HUE_SHIFT = 15     # degrees to advance the wave each frame
 
+  SYSMON_TICK = 1.5  # seconds between stat polls
+
+  # Rows ordered bottom→top (index 0 = green, index 5 = red).
+  # filter_map silently skips any key absent from the physical layout.
+  SYSMON_LEFT_ROWS = [
+    %w[thumb1 thumb2],
+    %w[l_ctrl l_dygma l_alt space1 space2],
+    %w[l_shift z x c v b],
+    %w[caps a s d f g],
+    %w[tab q w e r t],
+    %w[esc 1 2 3 4 5 6],
+  ].freeze
+
+  SYSMON_RIGHT_ROWS = [
+    %w[thumb3 thumb4],
+    %w[space3 space4 r_alt r_dygma fn r_ctrl],
+    ["r_shift", "n", "m", ",", ".", "?", "\\"],
+    ["enter", "h", "j", "k", "l", "ç", "~"],
+    ["y", "u", "i", "o", "p", "{", "}"],
+    ["7", "8", "9", "0", "'", "+", "backspace"],
+  ].freeze
+
+  # Pre-computed green→red gradient across 6 rows (HSV 120°→0°, s=1, v=1).
+  SYSMON_ROW_COLORS = [
+    [  0, 255,   0],  # row 0 bottom — green
+    [102, 255,   0],  # row 1
+    [204, 255,   0],  # row 2
+    [255, 204,   0],  # row 3
+    [255, 102,   0],  # row 4
+    [255,   0,   0],  # row 5 top   — red
+  ].freeze
+
   def self.for(style)
     case style
     when "flash"     then method(:flash)
@@ -24,7 +56,8 @@ module Behaviors
     when "scan"      then method(:scan)
     when "matrix"    then method(:matrix)
     when "rainbow"   then method(:rainbow)
-    else raise ArgumentError, "Unknown style '#{style}'. Available: flash, breathe, solid, alternate, scan, matrix, rainbow"
+    when "sysmon"    then method(:sysmon)
+    else raise ArgumentError, "Unknown style '#{style}'. Available: flash, breathe, solid, alternate, scan, matrix, rainbow, sysmon"
     end
   end
 
@@ -253,6 +286,46 @@ module Behaviors
     end
   end
 
+  # Live system monitor: left half = CPU, right half = memory.
+  # Both fill from the bottom (green) upward (red) based on current usage %.
+  # color/r/g/b params unused — colors are always the fixed green→red gradient.
+  # count = seconds to run; nil = infinite (normal for a scheme).
+  def self.sysmon(_section, _indices, _r, _g, _b, count)
+    deadline = count ? Time.now + count : nil
+
+    # These sysctl values never change — read once.
+    ncpu = `sysctl -n hw.ncpu`.strip.to_i.clamp(1, 256)
+
+    # Resolve key names → LED indices once; filter_map skips missing keys.
+    left_rows       = SYSMON_LEFT_ROWS.map  { |row| row.filter_map { |k| Keyboard.layout[k] } }
+    right_rows      = SYSMON_RIGHT_ROWS.map { |row| row.filter_map { |k| Keyboard.layout[k] } }
+    underglow_idxs  = Sections.indices_for("underglow")
+    n_rows          = left_rows.length
+
+    loop do
+      break if deadline && Time.now >= deadline
+      t0 = Time.now
+
+      cpu_pct = _cpu_percent(ncpu)
+      mem_pct = _mem_percent
+
+      color_map = {}
+      _fill_meter(color_map, left_rows,  cpu_pct)
+      _fill_meter(color_map, right_rows, mem_pct)
+
+      # Underglow shows the worst (highest) active row color.
+      cpu_lit      = (cpu_pct * n_rows / 100.0).ceil.clamp(0, n_rows)
+      mem_lit      = (mem_pct * n_rows / 100.0).ceil.clamp(0, n_rows)
+      worst        = [cpu_lit, mem_lit].max
+      ug_color     = worst > 0 ? SYSMON_ROW_COLORS[worst - 1] : [0, 0, 0]
+      underglow_idxs.each { |idx| color_map[idx] = ug_color }
+
+      Keyboard.paint_frame(color_map)
+
+      _sleep_remaining(SYSMON_TICK, t0)
+    end
+  end
+
   private_class_method def self._set(section, indices, r, g, b)
     section == "all" ? Keyboard.set_all(r, g, b) : Keyboard.set_leds(indices, r, g, b)
   end
@@ -262,6 +335,32 @@ module Behaviors
   private_class_method def self._sleep_remaining(target, step_start)
     remaining = target - (Time.now - step_start)
     sleep remaining if remaining > 0
+  end
+
+  # Light up `lit` rows from the bottom using the sysmon gradient; rest off.
+  private_class_method def self._fill_meter(color_map, rows, pct)
+    lit = (pct * rows.length / 100.0).ceil.clamp(0, rows.length)
+    rows.each_with_index do |indices, i|
+      color = i < lit ? SYSMON_ROW_COLORS[i] : [0, 0, 0]
+      indices.each { |idx| color_map[idx] = color }
+    end
+  end
+
+  # Sum per-process %cpu from ps, normalised by core count.
+  private_class_method def self._cpu_percent(ncpu)
+    `ps -A -o %cpu`.lines.drop(1).sum(&:to_f)./(ncpu).clamp(0, 100).round
+  rescue
+    0
+  end
+
+  # Inverts the free % reported by memory_pressure — the only reliable way to
+  # match what macOS itself considers "used" vs file cache noise in vm_stat.
+  private_class_method def self._mem_percent
+    line     = `memory_pressure`.lines.find { |l| l.include?("free percentage") }
+    free_pct = line&.scan(/\d+/)&.first.to_i || 0
+    (100 - free_pct).clamp(0, 100)
+  rescue
+    0
   end
 
   # Convert HSV (h: 0.0–1.0, s: 0.0–1.0, v: 0.0–1.0) to [r, g, b] 0–255.
